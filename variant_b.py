@@ -22,8 +22,8 @@ mx = cv.mx
 B = dict(
     duct_id     = 100.0,
     spigot_od   = 96.0, rib_od = 98.6, wall = 2.4,
-    rib_z_low   = 46.0,    # centre height of the lower gasket rib above the board face (min 43.6)
-    rib_z_high  = 70.5,    # centre height of the upper gasket rib (max 71.9); gasket band between them
+    rib_z_low   = 48.65,   # centre height of the lower gasket rib above the board face (min 43.6)
+    rib_z_high  = 66.85,   # centre height of the upper gasket rib (max 71.9); gasket band between them
     z_spigot_top= 75.0,
     cavity      = 40.5,    # board face -> concrete / duct mouth
     skim        = 2.5,     # bell lip stands this far below the board face (1 mm brim + 1.5 mm plaster)
