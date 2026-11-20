@@ -6,7 +6,8 @@ z = 0 is the plasterboard face, +z up into the ceiling. mm.
 Parts written:
   B_frame.stl        spigot + bell with threaded bore, stays in the ceiling (print spigot end down)
   B_brim.stl         perforated plaster-in ring                             (print flat)
-  B_disc.stl         deflector disc with hex peg                            (print face down)
+  B_disc_carrier.stl deflector with hex peg, markings engraved underneath   (print flat side down)
+  B_disc_cover.stl   pull-off cover disc (the visible face)                 (print face down)
   B_thread_ring.stl  threaded ring, glue onto the disc's hex peg            (print flat)
   template_ring.stl  plug + ring: trace around it to mark the hole          (print ring down)
 No screws: the disc + ring core screws into the thread in the frame's bore.
@@ -36,6 +37,14 @@ B = dict(
     thr_clear   = 0.3,     # radial clearance, also sets ~0.6 mm axial play
     ring_t      = 1.6, ring_h = 10.0, ring_z0 = 42.5,   # threaded ring of the core (z0 = nominal, disc flush)
     hub_r       = 11.5, peg_af = 14.0, peg_clear = 0.3, arm_t = 2.4, n_arms = 3,
+    # two-part disc: carrier (stays on the thread ring) + pull-off cover that hides the markings
+    carrier_r   = 46.0, cover_t = 1.2, cover_clear = 0.2,
+    sock_r      = 10.15, sock_depth = 12.0, bead_z = 8.5, bead_h = 0.4, groove_h = 0.5,
+    collet_r    = 10.0, collet_t = 1.2, collet_len = 11.0, n_slits = 8, slit_w = 1.4,
+    key_r       = 22.0, key_d = 5.0, key_h = 2.2,          # 2 drive pegs so turning the cover turns the core
+    engrave     = 0.6,
+    n_ticks     = 12,      # one tick = pitch / n_ticks = 0.5 mm of height
+    mark_w      = 1.6, mark_depth = 0.6,                   # reference line engraved in the bell
     # marking template
     hole_d      = 167.0,   # cut line (both variants)
     pencil_offset = 0.5,   # pencil line lands this far outside the ring edge
@@ -67,7 +76,12 @@ def frame_field(prof, r, phi, z, p=B):
     d = helix_d(phi, z, p)
     ridge = mx(rc + np.maximum(d - p['thr_crest']/2, 0) - r, r - (ri + 1),
                rc + (p['thr_z0'] + p['thr_h'] - z) - r, rc + (z - (p['thr_z1'] - p['thr_h'])) - r)
-    return np.minimum(prof, ridge)
+    f = np.minimum(prof, ridge)
+    # reference line in the bell at phi = 0, read against the ticks on the carrier
+    x = r*np.cos(phi); y = r*np.sin(phi)
+    mark = mx(np.abs(y) - p['mark_w']/2, -x, -(prof + p['mark_depth']), z - (p['z_bell_top'] - 1),
+              ri + 1.5 - r, r - 72, r - (87 - z))
+    return np.maximum(f, -mark)
 
 def ring_field(prof, r, phi, z, p=B):
     """threaded ring + arms + hub with hex socket; z measured from the ring's lower face"""
@@ -85,13 +99,75 @@ def ring_field(prof, r, phi, z, p=B):
         f = np.minimum(f, mx(np.abs(ys) - p['arm_t']/2, p['hub_r']-1 - xs, xs - (r_root - 0.5), zz))
     return np.maximum(f, -cv.hex_d(x, y, p['peg_af'] + p['peg_clear']))
 
-def disc_profile(p=B):
-    pts, _ = cv.defl_profile(cv.P); return pts
+def _trumpet(p=B):
+    _, cur = cv.defl_profile(cv.P); return cur            # rim -> tip, (r, z), r decreasing
 
-def disc_field(prof, r, phi, z, p=B):
-    x = r*np.cos(phi); y = r*np.sin(phi); zt = cv.P['tip_z']
-    peg = mx(cv.hex_d(x, y, p['peg_af']), zt - 1 - z, z - (zt + p['ring_h']))
-    return np.minimum(prof, peg)
+def carrier_profile(p=B):
+    cur = _trumpet(p); rc = p['carrier_r']; zc = np.interp(rc, cur[::-1, 0], cur[::-1, 1])
+    inner = cur[cur[:, 0] < rc]
+    return np.array([(-1, p['cover_t']), (rc, p['cover_t']), (rc, zc)] + [tuple(q) for q in inner] + [(-1, cv.P['tip_z'])])
+
+def cover_profile(p=B):
+    cur = _trumpet(p); rc = p['carrier_r'] + p['cover_clear']; zc = np.interp(rc, cur[::-1, 0], cur[::-1, 1])
+    outer = cur[cur[:, 0] > rc]; R = cv.P['disc_d']/2
+    return np.array([(-1, 0), (R-0.5, 0), (R, 0.5)] + [tuple(q) for q in outer] + [(rc, zc), (rc, p['cover_t']), (-1, p['cover_t'])])
+
+_MARKS = None
+def marks_sdf(p=B, ppm=20, half=50):
+    """signed distance image (mm, negative inside the engraving) of the markings as seen from below"""
+    global _MARKS
+    if _MARKS is not None: return _MARKS
+    import matplotlib; matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Arc, Polygon
+    from scipy.ndimage import distance_transform_edt as edt
+    fig = plt.figure(figsize=(2*half/25.4, 2*half/25.4), dpi=25.4*ppm)
+    ax = fig.add_axes([0, 0, 1, 1]); ax.set_xlim(-half, half); ax.set_ylim(-half, half); ax.axis('off')
+    lw = lambda mm: mm/25.4*72
+    n = p['n_ticks']; rc = p['carrier_r']
+    for i in range(n):
+        a = np.pi/2 - 2*np.pi*i/n; c, s_ = np.cos(a), np.sin(a)
+        ax.plot([c*(rc-6.5), c*(rc-1.5)], [s_*(rc-6.5), s_*(rc-1.5)], 'k', lw=lw(1.5), solid_capstyle='butt')
+        ax.text(c*(rc-11.5), s_*(rc-11.5), str(i), ha='center', va='center', fontsize=lw(6.2), fontweight='bold', family='DejaVu Sans')
+    for txt, v, a0, a1 in (('OPEN', 20.5, 25, 150), ('CLOSE', -20.5, 210, 335)):
+        ax.text(0, v, txt, ha='center', va='center', fontsize=lw(6.6), fontweight='bold', family='DejaVu Sans')
+        ax.add_patch(Arc((0, 0), 29, 29, theta1=a0, theta2=a1, lw=lw(1.5), color='k'))
+        e = np.radians(a1 if v > 0 else a0); sgn = 1 if v > 0 else -1          # arrow head, both travel right-to-left
+        t = np.array([-np.sin(e), np.cos(e)])*sgn; nrm = np.array([np.cos(e), np.sin(e)]); c0 = 14.5*nrm
+        ax.add_patch(Polygon([c0 + 4.5*t, c0 + 2.6*nrm, c0 - 2.6*nrm], color='k'))
+    fig.canvas.draw(); img = np.asarray(fig.canvas.buffer_rgba())[:, :, 0] < 128; plt.close(fig)
+    _MARKS = ((edt(~img) - edt(img))/ppm, ppm, half)
+    return _MARKS
+
+def marks_at(u, v, p=B):
+    from scipy.ndimage import map_coordinates
+    d, ppm, half = marks_sdf(p)
+    return map_coordinates(d, [(half - v)*ppm - 0.5, (u + half)*ppm - 0.5], order=1, mode='nearest')
+
+def _bead(r_base, z, zc, h, flat):
+    """radius of a 45-degree-sided bead/groove profile centred at zc"""
+    return r_base + np.maximum(0, h - np.maximum(np.abs(z - zc) - flat/2, 0))
+
+def carrier_field(prof, r, phi, z, p=B):
+    x = r*np.cos(phi); y = r*np.sin(phi); zt = cv.P['tip_z']; z0 = p['cover_t']
+    f = np.minimum(prof, mx(cv.hex_d(x, y, p['peg_af']), zt - 1 - z, z - (zt + p['ring_h'])))
+    f = np.maximum(f, -mx(r - _bead(p['sock_r'], z, z0 + p['bead_z'], p['groove_h'], 1.0), z - (z0 + p['sock_depth'])))
+    for sx in (1, -1):
+        f = np.maximum(f, -mx(np.hypot(x - sx*p['key_r'], y) - (p['key_d']/2 + 0.25), z - (z0 + p['key_h'] + 0.4)))
+    xx, yy, _ = np.broadcast_arrays(x, y, z)
+    m = marks_at(xx[:, :, 0], -yy[:, :, 0], p)[:, :, None]         # seen from below: u = x, v = -y
+    return np.maximum(f, -mx(m, z - (z0 + p['engrave']), r - (p['carrier_r'] - 0.8)))
+
+def cover_field(prof, r, phi, z, p=B):
+    x = r*np.cos(phi); y = r*np.sin(phi); z0 = p['cover_t']
+    col = mx(r - _bead(p['collet_r'], z, z0 + p['bead_z'], p['bead_h'], 0.6), p['collet_r'] - p['collet_t'] - r,
+             z0 - 0.5 - z, z - (z0 + p['collet_len']))
+    st = 2*np.pi/p['n_slits']; a = (phi + st/2) % st - st/2
+    col = np.maximum(col, -mx(np.abs(r*np.sin(a)) - p['slit_w']/2, (z0 + 0.6) - z))
+    f = np.minimum(prof, col)
+    for sx in (1, -1):
+        f = np.minimum(f, mx(np.hypot(x - sx*p['key_r'], y) - p['key_d']/2, z0 - 0.5 - z, z - (z0 + p['key_h'])))
+    return f
 
 def brim_profile(p=B):
     rb = p['back_od']/2; t = p['brim_t']; ro = p['brim_od']/2
@@ -142,7 +218,7 @@ if __name__ == '__main__':
     r_ax = A(0, p['stop_r'] + 1.5, 1.2, list(fp[:, 0]) + list(np.arange(ri - p['thr_h'] - 0.3, ri + 0.4, 0.3)))
     z_ax = A(-p['skim'] - 1, p['z_spigot_top'] + 1, 1.2, [q for q in fp[:, 1] if q > 0 or q < -1]
              + list(np.arange(p['thr_z0'] - 0.4, p['thr_z1'] + 0.4, 0.2)), eps=0.02)
-    xyz, tri, vol = cv.mesh_polar(frame_field, fp, r_ax, ang([]), z_ax); rep('frame', tri, vol)
+    xyz, tri, vol = cv.mesh_polar(frame_field, fp, r_ax, ang(list(np.arange(-2.5, 2.51, 0.2))), z_ax); rep('frame', tri, vol)
     cv.write_stl('B_frame.stl', flip(xyz, p['z_spigot_top']), tri)
     # threaded ring (core, part 1)
     dummy = np.array([(200, 0), (201, 0), (201, 1)])
@@ -152,12 +228,22 @@ if __name__ == '__main__':
     for k in range(p['n_arms']): ex += list(np.arange(360*k/p['n_arms']-9, 360*k/p['n_arms']+9.01, 0.5))
     xyz, tri, vol = cv.mesh_polar(ring_field, dummy, r_ax, ang(ex), z_ax); rep('thread ring', tri, vol)
     cv.write_stl('B_thread_ring.stl', xyz, tri)
-    # disc with hex peg (core, part 2)
-    dp = disc_profile()
-    r_ax = A(0, c['disc_d']/2 + 1, 1.0, [c['disc_d']/2, c['disc_d']/2-0.5, c['tip_r'], p['peg_af']/2])
-    z_ax = A(-1, c['tip_z'] + p['ring_h'] + 1, 1.0, [0, 0.5, c['disc_rim_t'], c['tip_z'], c['tip_z'] + p['ring_h']])
-    xyz, tri, vol = cv.mesh_polar(disc_field, dp, r_ax, np.radians(np.arange(0, 360.01, 2.0)), z_ax); rep('disc', tri, vol)
-    cv.write_stl('B_disc.stl', xyz, tri)
+    # disc carrier (core, part 2) - fine grid so the engraved markings come out
+    kp = carrier_profile(); z0 = p['cover_t']
+    r_ax = A(0, p['carrier_r'] + 1, 0.45, [p['carrier_r'], p['sock_r'], p['peg_af']/2])
+    z_ax = A(z0 - 1, c['tip_z'] + p['ring_h'] + 1, 1.0, [z0, z0 + p['engrave'], z0 + p['key_h'] + 0.4, z0 + p['sock_depth'],
+             c['tip_z'], c['tip_z'] + p['ring_h']] + list(np.arange(z0 + p['bead_z'] - 1.4, z0 + p['bead_z'] + 1.5, 0.25)))
+    xyz, tri, vol = cv.mesh_polar(carrier_field, kp, r_ax, np.radians(np.arange(0, 360.01, 0.6)), z_ax); rep('disc carrier', tri, vol)
+    xyz[:, 2] -= z0
+    cv.write_stl('B_disc_carrier.stl', xyz, tri)
+    # disc cover (pull-off)
+    vp = cover_profile()
+    r_ax = A(0, c['disc_d']/2 + 1, 0.8, [c['disc_d']/2, c['disc_d']/2-0.5, p['carrier_r'] + p['cover_clear'], p['collet_r'],
+             p['collet_r'] - p['collet_t'], p['collet_r'] + p['bead_h']] + list(np.arange(p['key_r'] - 3, p['key_r'] + 3.1, 0.4)))
+    z_ax = A(-1, z0 + p['collet_len'] + 1, 0.8, [0, 0.5, z0, z0 + 0.6, z0 + p['key_h'], z0 + p['collet_len']]
+             + list(np.arange(z0 + p['bead_z'] - 1.2, z0 + p['bead_z'] + 1.3, 0.25)))
+    xyz, tri, vol = cv.mesh_polar(cover_field, vp, r_ax, np.radians(np.arange(0, 360.01, 1.0)), z_ax); rep('disc cover', tri, vol)
+    cv.write_stl('B_disc_cover.stl', xyz, tri)
     # brim
     bp = brim_profile()
     r_ax = A(bp[:, 0].min() - 1, p['brim_od']/2 + 1, 0.7, list(bp[:, 0]))
