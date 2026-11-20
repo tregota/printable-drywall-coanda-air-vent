@@ -37,9 +37,9 @@ B = dict(
     thr_h       = 1.5,     # ridge height
     thr_crest   = 1.2,     # crest width (45 deg flanks)
     thr_z0      = 36.0, thr_z1 = 62.0,     # threaded length of the bore
-    thr_clear   = 0.3,     # radial clearance, also sets ~0.6 mm axial play
+    thr_clear   = 0.2,     # radial clearance, also sets ~0.4 mm axial play
     ring_t      = 1.6, ring_h = 10.0, ring_z0 = 42.5,   # threaded ring of the core (z0 = nominal, disc flush)
-    hub_r       = 11.5, peg_af = 14.0, peg_clear = 0.3, arm_t = 2.4, n_arms = 3,
+    hub_r       = 11.5, peg_af = 14.0, peg_clear = 0.2, arm_t = 2.4, n_arms = 3,
     pin_d       = 2.3,     # cross hole through hub + peg for a piece of 1.75 mm filament (locks ring to disc)
     # two-part disc: carrier (stays on the thread ring) + pull-off cover that hides the markings
     carrier_r   = 46.0, cover_t = 1.2, cover_clear = 0.2,
