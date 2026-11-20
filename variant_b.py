@@ -45,6 +45,7 @@ B = dict(
     carrier_r   = 46.0, cover_t = 1.2, cover_clear = 0.2,
     sock_r      = 10.15, sock_depth = 12.0, bead_z = 8.5, bead_h = 0.4, groove_h = 0.5,
     collet_r    = 10.0, collet_t = 1.2, collet_len = 11.0, n_slits = 8, slit_w = 1.4,
+    collet_root_t = 2.4, collet_taper = 5.5, collet_fillet = 1.5,  # fingers: 2.4 mm at the root tapering to 1.2 over 5.5 mm, rounded inner corner
     key_r       = 22.0, key_d = 5.0, key_h = 2.2,          # 2 drive pegs so turning the cover turns the core
     engrave     = 0.6,
     n_ticks     = 12,      # one tick = pitch / n_ticks = 0.5 mm of height
@@ -186,10 +187,16 @@ def inlay_field(prof, r, phi, z, p=B):
 
 def cover_field(prof, r, phi, z, p=B):
     x = r*np.cos(phi); y = r*np.sin(phi); z0 = p['cover_t']
-    col = mx(r - _bead(p['collet_r'], z, z0 + p['bead_z'], p['bead_h'], 0.6), p['collet_r'] - p['collet_t'] - r,
-             z0 - 0.5 - z, z - (z0 + p['collet_len']))
+    t = p['collet_t'] + (p['collet_root_t'] - p['collet_t'])*np.clip(1 - (z - z0)/p['collet_taper'], 0, 1)
+    ro = p['collet_r']; rin0 = ro - p['collet_root_t']; fr = p['collet_fillet']
+    col = mx(r - _bead(ro, z, z0 + p['bead_z'], p['bead_h'], 0.6), ro - t - r, z0 - 0.5 - z, z - (z0 + p['collet_len']))
+    fil = mx(r - ro, (rin0 - fr) - r, z0 - 0.5 - z, z - (z0 + fr))                   # inner fillet where the fingers meet the plate
+    fil = np.maximum(fil, -(np.hypot(r - (rin0 - fr), z - (z0 + fr)) - fr))
+    col = np.minimum(col, fil)
     st = 2*np.pi/p['n_slits']; a = (phi + st/2) % st - st/2
-    col = np.maximum(col, -mx(np.abs(r*np.sin(a)) - p['slit_w']/2, (z0 + 0.6) - z))
+    lat = np.abs(r*np.sin(a)); zb = z0 + 0.6 + p['slit_w']/2                         # slits end in a half-round, no notch
+    slit = np.where(z > zb, lat - p['slit_w']/2, np.hypot(lat, z - zb) - p['slit_w']/2)
+    col = np.maximum(col, -np.maximum(slit, rin0 - fr - 0.5 - r))
     f = np.minimum(prof, col)
     for sx in (1, -1):
         f = np.minimum(f, mx(np.hypot(x - sx*p['key_r'], y) - p['key_d']/2, z0 - 0.5 - z, z - (z0 + p['key_h'])))
@@ -295,8 +302,10 @@ if __name__ == '__main__':
     # disc cover (pull-off)
     vp = cover_profile()
     r_ax = A(0, c['disc_d']/2 + 1, 0.8, [c['disc_d']/2, c['disc_d']/2-0.5, p['carrier_r'] + p['cover_clear'], p['collet_r'],
-             p['collet_r'] - p['collet_t'], p['collet_r'] + p['bead_h']] + list(np.arange(p['key_r'] - 3, p['key_r'] + 3.1, 0.4)))
+             p['collet_r'] - p['collet_t'], p['collet_r'] + p['bead_h']] + list(np.arange(p['key_r'] - 3, p['key_r'] + 3.1, 0.4))
+             + list(np.arange(p['collet_r'] - p['collet_root_t'] - p['collet_fillet'] - 0.6, p['collet_r'] + 0.6, 0.25)))
     z_ax = A(-1, z0 + p['collet_len'] + 1, 0.8, [0, 0.5, z0, z0 + 0.6, z0 + p['key_h'], z0 + p['collet_len']]
+             + list(np.arange(z0, z0 + p['collet_taper'] + 0.3, 0.25))
              + list(np.arange(z0 + p['bead_z'] - 1.2, z0 + p['bead_z'] + 1.3, 0.25)))
     xyz, tri, vol = cv.mesh_polar(cover_field, vp, r_ax, np.radians(np.arange(0, 360.01, 1.0)), z_ax); rep('disc cover', tri, vol)
     cv.write_stl('B_disc_cover.stl', xyz, tri)
