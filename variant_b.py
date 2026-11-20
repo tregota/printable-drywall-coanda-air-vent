@@ -39,6 +39,7 @@ B = dict(
     thr_clear   = 0.3,     # radial clearance, also sets ~0.6 mm axial play
     ring_t      = 1.6, ring_h = 10.0, ring_z0 = 42.5,   # threaded ring of the core (z0 = nominal, disc flush)
     hub_r       = 11.5, peg_af = 14.0, peg_clear = 0.3, arm_t = 2.4, n_arms = 3,
+    pin_d       = 2.3,     # cross hole through hub + peg for a piece of 1.75 mm filament (locks ring to disc)
     # two-part disc: carrier (stays on the thread ring) + pull-off cover that hides the markings
     carrier_r   = 46.0, cover_t = 1.2, cover_clear = 0.2,
     sock_r      = 10.15, sock_depth = 12.0, bead_z = 8.5, bead_h = 0.4, groove_h = 0.5,
@@ -104,7 +105,8 @@ def ring_field(prof, r, phi, z, p=B):
     for k in range(p['n_arms']):
         a = 2*np.pi*k/p['n_arms']; xs = r*np.cos(phi-a); ys = r*np.sin(phi-a)
         f = np.minimum(f, mx(np.abs(ys) - p['arm_t']/2, p['hub_r']-1 - xs, xs - (r_root - 0.5), zz))
-    return np.maximum(f, -cv.hex_d(x, y, p['peg_af'] + p['peg_clear']))
+    f = np.maximum(f, -cv.hex_d(x, y, p['peg_af'] + p['peg_clear']))
+    return np.maximum(f, -mx(np.hypot(x, z - h/2) - p['pin_d']/2, r - (p['hub_r'] + 1)))   # pin hole along y, between the arms
 
 def _trumpet(p=B):
     _, cur = cv.defl_profile(cv.P); return cur            # rim -> tip, (r, z), r decreasing
@@ -158,6 +160,7 @@ def _bead(r_base, z, zc, h, flat):
 def carrier_field(prof, r, phi, z, p=B):
     x = r*np.cos(phi); y = r*np.sin(phi); zt = cv.P['tip_z']; z0 = p['cover_t']
     f = np.minimum(prof, mx(cv.hex_d(x, y, p['peg_af']), zt - 1 - z, z - (zt + p['ring_h'])))
+    f = np.maximum(f, -(np.hypot(x, z - (zt + p['ring_h']/2)) - p['pin_d']/2))
     f = np.maximum(f, -mx(r - _bead(p['sock_r'], z, z0 + p['bead_z'], p['groove_h'], 1.0), z - (z0 + p['sock_depth'])))
     for sx in (1, -1):
         f = np.maximum(f, -mx(np.hypot(x - sx*p['key_r'], y) - (p['key_d']/2 + 0.25), z - (z0 + p['key_h'] + 0.4)))
@@ -241,13 +244,15 @@ if __name__ == '__main__':
     z_ax = A(-1, p['ring_h'] + 1, 0.4, [0, p['ring_h']])
     ex = []
     for k in range(p['n_arms']): ex += list(np.arange(360*k/p['n_arms']-9, 360*k/p['n_arms']+9.01, 0.5))
+    ex += list(np.arange(72, 108.01, 0.75)) + list(np.arange(252, 288.01, 0.75))
     xyz, tri, vol = cv.mesh_polar(ring_field, dummy, r_ax, ang(ex), z_ax); rep('thread ring', tri, vol)
     cv.write_stl('B_thread_ring.stl', xyz, tri)
     # disc carrier (core, part 2) - fine grid so the engraved markings come out
     kp = carrier_profile(); z0 = p['cover_t']
     r_ax = A(0, p['carrier_r'] + 1, 0.45, [p['carrier_r'], p['sock_r'], p['peg_af']/2])
     z_ax = A(z0 - 1, c['tip_z'] + p['ring_h'] + 1, 1.0, [z0, z0 + p['engrave'], z0 + p['key_h'] + 0.4, z0 + p['sock_depth'],
-             c['tip_z'], c['tip_z'] + p['ring_h']] + list(np.arange(z0 + p['bead_z'] - 1.4, z0 + p['bead_z'] + 1.5, 0.25)))
+             c['tip_z'], c['tip_z'] + p['ring_h']] + list(np.arange(z0 + p['bead_z'] - 1.4, z0 + p['bead_z'] + 1.5, 0.25))
+             + list(np.arange(c['tip_z'] + p['ring_h']/2 - 1.6, c['tip_z'] + p['ring_h']/2 + 1.7, 0.25)))
     xyz, tri, vol = cv.mesh_polar(carrier_field, kp, r_ax, np.radians(np.arange(0, 360.01, 0.6)), z_ax); rep('disc carrier', tri, vol)
     xyz[:, 2] -= z0
     cv.write_stl('B_disc_carrier.stl', xyz, tri)
