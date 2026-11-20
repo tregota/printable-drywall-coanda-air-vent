@@ -5,6 +5,7 @@ Needs coanda_valve.py (variant A) next to it.   Run:  python3 variant_b.py
 z = 0 is the plasterboard face, +z up into the ceiling. mm.
 Parts written:
   B_frame.stl        spigot + bell with threaded bore, stays in the ceiling (print spigot end down)
+  B_frame_mark_inlay.stl  optional: fills the reference line in the bell (same colour = no line, other colour = coloured line)
   B_brim.stl         perforated plaster-in ring                             (print flat)
   B_disc_carrier.stl deflector with hex peg, markings engraved underneath   (print flat side down)
   B_disc_markings_inlay.stl  optional: fills the engraving, load together with the carrier and give it another colour
@@ -78,11 +79,16 @@ def frame_field(prof, r, phi, z, p=B):
     ridge = mx(rc + np.maximum(d - p['thr_crest']/2, 0) - r, r - (ri + 1),
                rc + (p['thr_z0'] + p['thr_h'] - z) - r, rc + (z - (p['thr_z1'] - p['thr_h'])) - r)
     f = np.minimum(prof, ridge)
-    # reference line in the bell at phi = 0, read against the ticks on the carrier
-    x = r*np.cos(phi); y = r*np.sin(phi)
-    mark = mx(np.abs(y) - p['mark_w']/2, -x, -(prof + p['mark_depth']), z - (p['z_bell_top'] - 1),
+    return np.maximum(f, -ref_mark(prof, r, phi, z, p))
+
+def ref_mark(prof, r, phi, z, p=B):
+    """reference line in the bell at phi = 0, read against the ticks on the carrier"""
+    ri = p['spigot_od']/2 - p['wall']; x = r*np.cos(phi); y = r*np.sin(phi)
+    return mx(np.abs(y) - p['mark_w']/2, -x, -(prof + p['mark_depth']), z - (p['z_bell_top'] - 1),
               ri + 1.5 - r, r - 72, r - (87 - z))
-    return np.maximum(f, -mark)
+
+def frame_mark_inlay_field(prof, r, phi, z, p=B):
+    return np.maximum(ref_mark(prof, r, phi, z, p), prof)
 
 def ring_field(prof, r, phi, z, p=B):
     """threaded ring + arms + hub with hex socket; z measured from the ring's lower face"""
@@ -227,6 +233,8 @@ if __name__ == '__main__':
              + list(np.arange(p['thr_z0'] - 0.4, p['thr_z1'] + 0.4, 0.2)), eps=0.02)
     xyz, tri, vol = cv.mesh_polar(frame_field, fp, r_ax, ang(list(np.arange(-2.5, 2.51, 0.2))), z_ax); rep('frame', tri, vol)
     cv.write_stl('B_frame.stl', flip(xyz, p['z_spigot_top']), tri)
+    xyz, tri, vol = cv.mesh_polar(frame_mark_inlay_field, fp, r_ax, ang(list(np.arange(-2.5, 2.51, 0.2))), z_ax); rep('frame mark inlay', tri, vol)
+    cv.write_stl('B_frame_mark_inlay.stl', flip(xyz, p['z_spigot_top']), tri)
     # threaded ring (core, part 1)
     dummy = np.array([(200, 0), (201, 0), (201, 1)])
     r_ax = A(0, ri + 1, 0.9, [p['hub_r']] + list(np.arange(ri - 4, ri + 0.4, 0.3)))
