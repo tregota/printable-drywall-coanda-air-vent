@@ -12,6 +12,7 @@ Parts written:
   B_disc_cover.stl   pull-off cover disc (the visible face)                 (print face down)
   B_thread_ring.stl  threaded ring, glue onto the disc's hex peg            (print flat)
   template_ring.stl  plug + ring: trace around it to mark the hole          (print ring down)
+  template_drill_guide.stl  plug with centre bushing for a hole saw's pilot drill (print plate down)
 No screws: the disc + ring core screws into the thread in the frame's bore.
 """
 import numpy as np
@@ -54,6 +55,13 @@ B = dict(
     hole_d      = 167.0,   # cut line (both variants)
     pencil_offset = 0.5,   # pencil line lands this far outside the ring edge
     plug_od     = 99.5, plug_len = 65.0, tmpl_t = 2.4,
+    # drill guide: plug with a centre bushing for the hole saw's pilot drill
+    pilot_d     = 6.6,     # bushing bore: fits 6 mm and 1/4" (6.35) pilot drills; ream to size
+    guide_len   = 50.0,    # plug length into the duct
+    guide_lip_d = 106.0,   # stop lip at the board face, stays inside the hole saw's cup
+    guide_t     = 3.0,     # base plate thickness
+    bush_od     = 16.0, bush_len = 35.0,                 # bushing length measured from the room side
+    n_ribs      = 4, rib_t = 3.0,
 )
 
 def frame_profile(p=B):
@@ -211,6 +219,20 @@ def tmpl_profile(p=B):
 
 def tmpl_field(prof, r, phi, z, p=B): return prof + 0*phi
 
+def guide_field(prof, r, phi, z, p=B):
+    """z = 0 is the room-side face of the base plate (it sits guide_t below the board face)"""
+    R = p['plug_od']/2; t = p['guide_t']; L = t + p['guide_len']; top = p['bush_len']
+    plate = mx(r - p['guide_lip_d']/2, -z, z - t)
+    tube  = mx(r - R, (R - 2) - r, -z, z - L, r - (R - (z - (L - 1.5)).clip(0)))   # small lead-in chamfer at the top
+    hub   = mx(r - p['bush_od']/2, -z, z - top)
+    f = np.minimum(np.minimum(plate, tube), hub)
+    for k in range(p['n_ribs']):
+        a = 2*np.pi*k/p['n_ribs']; xs = r*np.cos(phi - a); ys = r*np.sin(phi - a)
+        h = top - (xs - p['bush_od']/2)*(top - t - 8)/(R - 2 - p['bush_od']/2)          # rib slopes down to the tube
+        f = np.minimum(f, mx(np.abs(ys) - p['rib_t']/2, p['bush_od']/2 - 1 - xs, xs - (R - 1), -z, z - h))
+    bore = r - (p['pilot_d']/2 + np.maximum(0, 1.2 - z))                                 # 1.2 mm entry chamfer
+    return np.maximum(f, -bore)
+
 def throat(lift=0.0, p=B):
     _, arc = frame_profile(p); _, cur = cv.defl_profile(cv.P, lift - p['skim'])
     ri = p['spigot_od']/2 - p['wall']
@@ -292,3 +314,12 @@ if __name__ == '__main__':
     xyz, tri, vol = cv.mesh_polar(tmpl_field, tp, r_ax, np.radians(np.arange(0, 360.01, 2.0)), z_ax); rep('template', tri, vol)
     xyz[:, 2] += p['tmpl_t']
     cv.write_stl('template_ring.stl', xyz, tri)
+    # drill guide
+    dummy = np.array([(400, 0), (401, 0), (401, 1)])
+    R = p['plug_od']/2
+    r_ax = A(0, p['guide_lip_d']/2 + 1, 0.5, [p['pilot_d']/2, p['pilot_d']/2 + 1.2, p['bush_od']/2, R - 2, R, p['guide_lip_d']/2])
+    z_ax = A(-1, p['guide_t'] + p['guide_len'] + 1, 0.5, [0, 1.2, p['guide_t'], p['bush_len'], p['guide_t'] + p['guide_len']])
+    ex = []
+    for k in range(p['n_ribs']): ex += list(np.arange(360*k/p['n_ribs'] - 12, 360*k/p['n_ribs'] + 12.01, 0.5))
+    xyz, tri, vol = cv.mesh_polar(guide_field, dummy, r_ax, ang(ex), z_ax); rep('drill guide', tri, vol)
+    cv.write_stl('template_drill_guide.stl', xyz, tri)
