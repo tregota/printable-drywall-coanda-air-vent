@@ -22,6 +22,8 @@ mx = cv.mx
 B = dict(
     duct_id     = 100.0,
     spigot_od   = 96.0, rib_od = 98.6, wall = 2.4,
+    rib_z_low   = 46.0,    # centre height of the lower gasket rib above the board face (min 43.6)
+    rib_z_high  = 70.5,    # centre height of the upper gasket rib (max 71.9); gasket band between them
     z_spigot_top= 75.0,
     cavity      = 40.5,    # board face -> concrete / duct mouth
     skim        = 2.5,     # bell lip stands this far below the board face (1 mm brim + 1.5 mm plaster)
@@ -77,7 +79,10 @@ def frame_profile(p=B):
     zs = zl + 1.0                                   # top of the 1 mm plaster stop
     pts  = [(ri, zt)] + [tuple(q) for q in arc]
     pts += [(rs, zl), (rs, zs), (rb, zs + (rs-rb)), (rb, zc - (rb-rm)), (rm, zc), (ro, zc + (rm-ro))]
-    pts += rib(46.0) + rib(70.5) + [(ro, zt-1.5), (ro-1.2, zt)]
+    lo, hi, h = p['rib_z_low'], p['rib_z_high'], 0.3 + d          # each rib spans its centre +/- h
+    assert lo - h >= zc + (rm - ro) and hi + h <= zt - 1.5 and hi - lo >= 2*h + 2, \
+        'gasket ribs: keep rib_z_low >= %.1f, rib_z_high <= %.1f and at least %.1f mm apart' % (zc + (rm - ro) + h, zt - 1.5 - h, 2*h + 2)
+    pts += rib(lo) + rib(hi) + [(ro, zt-1.5), (ro-1.2, zt)]
     return np.array(pts), arc
 
 def helix_d(phi, z, p, shift=0.0):
