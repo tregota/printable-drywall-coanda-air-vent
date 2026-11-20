@@ -7,6 +7,7 @@ Parts written:
   B_frame.stl        spigot + bell with threaded bore, stays in the ceiling (print spigot end down)
   B_brim.stl         perforated plaster-in ring                             (print flat)
   B_disc_carrier.stl deflector with hex peg, markings engraved underneath   (print flat side down)
+  B_disc_markings_inlay.stl  optional: fills the engraving, load together with the carrier and give it another colour
   B_disc_cover.stl   pull-off cover disc (the visible face)                 (print face down)
   B_thread_ring.stl  threaded ring, glue onto the disc's hex peg            (print flat)
   template_ring.stl  plug + ring: trace around it to mark the hole          (print ring down)
@@ -158,6 +159,12 @@ def carrier_field(prof, r, phi, z, p=B):
     m = marks_at(xx[:, :, 0], -yy[:, :, 0], p)[:, :, None]         # seen from below: u = x, v = -y
     return np.maximum(f, -mx(m, z - (z0 + p['engrave']), r - (p['carrier_r'] - 0.8)))
 
+def inlay_field(prof, r, phi, z, p=B):
+    x = r*np.cos(phi); y = r*np.sin(phi); z0 = p['cover_t']
+    xx, yy, _ = np.broadcast_arrays(x, y, z)
+    m = marks_at(xx[:, :, 0], -yy[:, :, 0], p)[:, :, None]
+    return mx(m, z - (z0 + p['engrave']), z0 - z, r - (p['carrier_r'] - 0.8)) + 0*phi
+
 def cover_field(prof, r, phi, z, p=B):
     x = r*np.cos(phi); y = r*np.sin(phi); z0 = p['cover_t']
     col = mx(r - _bead(p['collet_r'], z, z0 + p['bead_z'], p['bead_h'], 0.6), p['collet_r'] - p['collet_t'] - r,
@@ -236,6 +243,10 @@ if __name__ == '__main__':
     xyz, tri, vol = cv.mesh_polar(carrier_field, kp, r_ax, np.radians(np.arange(0, 360.01, 0.6)), z_ax); rep('disc carrier', tri, vol)
     xyz[:, 2] -= z0
     cv.write_stl('B_disc_carrier.stl', xyz, tri)
+    # markings as a separate body that exactly fills the engraving (for multi-colour printing)
+    xyz, tri, vol = cv.mesh_polar(inlay_field, kp, r_ax, np.radians(np.arange(0, 360.01, 0.6)), z_ax); rep('markings inlay', tri, vol)
+    xyz[:, 2] -= z0
+    cv.write_stl('B_disc_markings_inlay.stl', xyz, tri)
     # disc cover (pull-off)
     vp = cover_profile()
     r_ax = A(0, c['disc_d']/2 + 1, 0.8, [c['disc_d']/2, c['disc_d']/2-0.5, p['carrier_r'] + p['cover_clear'], p['collet_r'],
