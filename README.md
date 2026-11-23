@@ -8,6 +8,6 @@ Claude has made two models for me, one using an M6×50 fully threaded hex screw 
 
 Here are some renders of the model without the m6 screw:
 
-![Render of the vent](render_room_side.png)
-![Render of the vent with plaster brim](B_room_side.png)
-![blueprint](B_section.png)
+![Render of the vent](B_render_product.png)
+![Render of the vent installed](B_render_installed.png)
+![exploded](B_render_exploded.png)
