@@ -4,7 +4,7 @@ I have 100mm air ducts in my concrete ceiling and have lowered it with 28mm furr
 
 **I haven't tested the coanda effect yet.**
 
-Claude has made two models for me, one using an M6×50 fully threaded hex screw and two M6 nuts, and another fully printable. Both require some kind of gasket or self-adhesive EPDM foam strip, about 3 mm thick (default 9–10 mm wide).
+Claude has made two models for me, one using an M6×50 fully threaded hex screw and two M6 nuts, and another fully printable. Both require some kind of gasket or self-adhesive EPDM foam strip, about 3 mm thick (default ~14 mm wide).
 
 Here are some renders of the model without the m6 screw:
 
